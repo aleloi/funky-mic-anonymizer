@@ -1,4 +1,3 @@
-
 export class AudioProcessor {
   private context: AudioContext;
   private analyser: AnalyserNode;
@@ -8,6 +7,11 @@ export class AudioProcessor {
   constructor() {
     this.context = new AudioContext();
     this.analyser = this.context.createAnalyser();
+    this.analyser.fftSize = 2048;
+  }
+
+  getAnalyser(): AnalyserNode {
+    return this.analyser;
   }
 
   async startRecording(): Promise<void> {
@@ -62,13 +66,10 @@ export class AudioProcessor {
         const inputData = inputBuffer.getChannelData(channel);
         const outputData = outputBuffer.getChannelData(channel);
 
-        // Apply spectral inversion above 1kHz
+        // Flip entire spectrum and add more distortion
         for (let i = 0; i < inputData.length; i++) {
-          if (i > inputData.length / 2) { // Roughly above 1kHz
-            outputData[i] = -inputData[i];
-          } else {
-            outputData[i] = inputData[i];
-          }
+          // Invert the entire signal and add some waveshaping
+          outputData[i] = -inputData[i] * (1 + Math.abs(inputData[i]));
         }
       }
     };
@@ -81,6 +82,15 @@ export class AudioProcessor {
     const wavBlob = this.audioBufferToWav(renderedBuffer);
     
     return wavBlob;
+  }
+
+  async createAudioElement(blob: Blob): Promise<HTMLAudioElement> {
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.addEventListener('ended', () => {
+      URL.revokeObjectURL(url);
+    });
+    return audio;
   }
 
   private audioBufferToWav(buffer: AudioBuffer): Blob {
