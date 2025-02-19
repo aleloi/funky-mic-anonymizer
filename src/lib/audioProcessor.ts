@@ -57,65 +57,69 @@ export class AudioProcessor {
     const source = offlineContext.createBufferSource();
     source.buffer = audioBuffer;
 
-    // Create analyser node for frequency-domain processing
     const analyser = offlineContext.createAnalyser();
     analyser.fftSize = 2048;
-    const bufferLength = analyser.frequencyBinCount;
     
-    // Create script processor for sample-by-sample manipulation
     const scriptNode = offlineContext.createScriptProcessor(2048, 1, 1);
     
-    // Connect source to analyser to script node to destination
     source.connect(analyser);
     analyser.connect(scriptNode);
     scriptNode.connect(offlineContext.destination);
 
-    // Arrays for frequency-domain processing
     const timeData = new Float32Array(analyser.fftSize);
-    const frequencyData = new Float32Array(analyser.fftSize);
     
     scriptNode.onaudioprocess = (audioProcessingEvent) => {
       const inputBuffer = audioProcessingEvent.inputBuffer;
       const outputBuffer = audioProcessingEvent.outputBuffer;
 
       for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
-        const inputData = inputBuffer.getChannelData(channel);
         const outputData = outputBuffer.getChannelData(channel);
 
-        // Get time-domain data
         analyser.getFloatTimeDomainData(timeData);
         
-        // Forward FFT
         const fft = new Float32Array(timeData);
         this.forwardFFT(fft);
 
-        // Modify frequency spectrum
-        // This will heavily distort the voice by inverting and shifting frequency components
+        // MUCH more aggressive frequency manipulation
         for (let i = 0; i < fft.length / 2; i++) {
-          // Get magnitude and phase
           const real = fft[2 * i];
           const imag = fft[2 * i + 1];
           const magnitude = Math.sqrt(real * real + imag * imag);
           const phase = Math.atan2(imag, real);
 
-          // Invert and shift frequencies
-          // This creates a much more dramatic effect than simple inversion
-          const newPhase = -phase + Math.PI / 2;
+          // Multiple frequency shifts and inversions
+          const newPhase = -phase * 3 + Math.PI / 2;
           
-          // Add some harmonic distortion
-          const newMagnitude = magnitude * (1 + Math.sin(i * 0.1));
+          // Extreme frequency shifting
+          const freqShift = (i / (fft.length / 2)) * 2 * Math.PI;
+          const shiftedPhase = newPhase + freqShift * 5;
+          
+          // Non-linear magnitude scaling
+          const newMagnitude = magnitude * (
+            1 + Math.sin(i * 0.2) + // Add harmonics
+            Math.cos(i * 0.3) + // More harmonics
+            Math.random() * 0.5 // Add noise
+          );
 
-          // Convert back to real/imaginary
-          fft[2 * i] = newMagnitude * Math.cos(newPhase);
-          fft[2 * i + 1] = newMagnitude * Math.sin(newPhase);
+          // Frequency scrambling
+          const targetBin = (i + Math.floor(i * 0.5)) % (fft.length / 2);
+          fft[2 * targetBin] = newMagnitude * Math.cos(shiftedPhase);
+          fft[2 * targetBin + 1] = newMagnitude * Math.sin(shiftedPhase);
+
+          // Additional phase distortion
+          if (i % 2 === 0) {
+            fft[2 * i] *= -1;
+            fft[2 * i + 1] *= -1;
+          }
         }
 
-        // Inverse FFT
         this.inverseFFT(fft);
 
-        // Copy to output
+        // Add some time-domain distortion as well
         for (let i = 0; i < outputData.length; i++) {
-          outputData[i] = fft[i] / analyser.fftSize;
+          const sample = fft[i] / analyser.fftSize;
+          // Waveshaping distortion
+          outputData[i] = Math.tanh(sample * 3) * 0.8;
         }
       }
     };
