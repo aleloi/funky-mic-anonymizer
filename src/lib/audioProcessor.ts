@@ -1,3 +1,4 @@
+
 export class AudioProcessor {
   private context: AudioContext;
   private analyser: AnalyserNode;
