@@ -1,4 +1,3 @@
-
 export class AudioProcessor {
   private context: AudioContext;
   private analyser: AnalyserNode;
@@ -58,7 +57,23 @@ export class AudioProcessor {
     const source = offlineContext.createBufferSource();
     source.buffer = audioBuffer;
 
+    // Create analyser node for frequency-domain processing
+    const analyser = offlineContext.createAnalyser();
+    analyser.fftSize = 2048;
+    const bufferLength = analyser.frequencyBinCount;
+    
+    // Create script processor for sample-by-sample manipulation
     const scriptNode = offlineContext.createScriptProcessor(2048, 1, 1);
+    
+    // Connect source to analyser to script node to destination
+    source.connect(analyser);
+    analyser.connect(scriptNode);
+    scriptNode.connect(offlineContext.destination);
+
+    // Arrays for frequency-domain processing
+    const timeData = new Float32Array(analyser.fftSize);
+    const frequencyData = new Float32Array(analyser.fftSize);
+    
     scriptNode.onaudioprocess = (audioProcessingEvent) => {
       const inputBuffer = audioProcessingEvent.inputBuffer;
       const outputBuffer = audioProcessingEvent.outputBuffer;
@@ -67,22 +82,103 @@ export class AudioProcessor {
         const inputData = inputBuffer.getChannelData(channel);
         const outputData = outputBuffer.getChannelData(channel);
 
-        // Flip entire spectrum and add more distortion
-        for (let i = 0; i < inputData.length; i++) {
-          // Invert the entire signal and add some waveshaping
-          outputData[i] = -inputData[i] * (1 + Math.abs(inputData[i]));
+        // Get time-domain data
+        analyser.getFloatTimeDomainData(timeData);
+        
+        // Forward FFT
+        const fft = new Float32Array(timeData);
+        this.forwardFFT(fft);
+
+        // Modify frequency spectrum
+        // This will heavily distort the voice by inverting and shifting frequency components
+        for (let i = 0; i < fft.length / 2; i++) {
+          // Get magnitude and phase
+          const real = fft[2 * i];
+          const imag = fft[2 * i + 1];
+          const magnitude = Math.sqrt(real * real + imag * imag);
+          const phase = Math.atan2(imag, real);
+
+          // Invert and shift frequencies
+          // This creates a much more dramatic effect than simple inversion
+          const newPhase = -phase + Math.PI / 2;
+          
+          // Add some harmonic distortion
+          const newMagnitude = magnitude * (1 + Math.sin(i * 0.1));
+
+          // Convert back to real/imaginary
+          fft[2 * i] = newMagnitude * Math.cos(newPhase);
+          fft[2 * i + 1] = newMagnitude * Math.sin(newPhase);
+        }
+
+        // Inverse FFT
+        this.inverseFFT(fft);
+
+        // Copy to output
+        for (let i = 0; i < outputData.length; i++) {
+          outputData[i] = fft[i] / analyser.fftSize;
         }
       }
     };
 
-    source.connect(scriptNode);
-    scriptNode.connect(offlineContext.destination);
     source.start();
 
     const renderedBuffer = await offlineContext.startRendering();
     const wavBlob = this.audioBufferToWav(renderedBuffer);
     
     return wavBlob;
+  }
+
+  // Fast Fourier Transform implementation
+  private forwardFFT(buffer: Float32Array) {
+    const n = buffer.length;
+    if (n <= 1) return buffer;
+
+    const halfN = n / 2;
+    
+    // Separate even and odd elements
+    const even = new Float32Array(halfN);
+    const odd = new Float32Array(halfN);
+    for (let i = 0; i < halfN; i++) {
+      even[i] = buffer[2 * i];
+      odd[i] = buffer[2 * i + 1];
+    }
+
+    // Recursively compute FFT
+    this.forwardFFT(even);
+    this.forwardFFT(odd);
+
+    // Combine results
+    for (let k = 0; k < halfN; k++) {
+      const theta = -2 * Math.PI * k / n;
+      const re = Math.cos(theta);
+      const im = Math.sin(theta);
+      
+      const evenK = even[k];
+      const oddK = odd[k];
+      
+      buffer[k] = evenK + (re * oddK - im * oddK);
+      buffer[k + halfN] = evenK - (re * oddK - im * oddK);
+    }
+  }
+
+  private inverseFFT(buffer: Float32Array) {
+    // Conjugate the complex numbers
+    for (let i = 0; i < buffer.length; i += 2) {
+      buffer[i + 1] = -buffer[i + 1];
+    }
+
+    // Forward FFT
+    this.forwardFFT(buffer);
+
+    // Conjugate the complex numbers again
+    for (let i = 0; i < buffer.length; i += 2) {
+      buffer[i + 1] = -buffer[i + 1];
+    }
+
+    // Scale the numbers
+    for (let i = 0; i < buffer.length; i++) {
+      buffer[i] /= buffer.length;
+    }
   }
 
   async createAudioElement(blob: Blob): Promise<HTMLAudioElement> {
