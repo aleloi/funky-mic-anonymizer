@@ -49,6 +49,15 @@ export class AudioProcessor {
     const arrayBuffer = await audioBlob.arrayBuffer();
     const audioBuffer = await this.context.decodeAudioData(arrayBuffer);
     
+    // Debug: Log original audio stats
+    const originalChannel = audioBuffer.getChannelData(0);
+    console.log('Original Audio Stats:', {
+      length: originalChannel.length,
+      max: Math.max(...originalChannel),
+      min: Math.min(...originalChannel),
+      rms: Math.sqrt(originalChannel.reduce((acc, val) => acc + val * val, 0) / originalChannel.length)
+    });
+
     const offlineContext = new OfflineAudioContext(
       audioBuffer.numberOfChannels,
       audioBuffer.length,
@@ -83,6 +92,14 @@ export class AudioProcessor {
       const outputData = outputBuffer.getChannelData(channel);
       const inputData = audioBuffer.getChannelData(channel);
       
+      // Debug: Log channel stats
+      console.log(`Channel ${channel} Stats:`, {
+        length: inputData.length,
+        max: Math.max(...inputData),
+        min: Math.min(...inputData),
+        rms: Math.sqrt(inputData.reduce((acc, val) => acc + val * val, 0) / inputData.length)
+      });
+      
       // Process in chunks to avoid large FFT computations
       const chunkSize = 2048;
       for (let i = 0; i < inputData.length; i += chunkSize) {
@@ -90,8 +107,26 @@ export class AudioProcessor {
         const end = Math.min(i + chunkSize, inputData.length);
         chunk.set(inputData.slice(i, end));
 
+        // Debug: Log chunk stats before FFT
+        if (i === 0) {
+          console.log('First Chunk Before FFT:', {
+            max: Math.max(...chunk),
+            min: Math.min(...chunk),
+            rms: Math.sqrt(chunk.reduce((acc, val) => acc + val * val, 0) / chunk.length)
+          });
+        }
+
         const fft = new Float32Array(chunk);
         this.forwardFFT(fft);
+
+        // Debug: Log FFT stats
+        if (i === 0) {
+          console.log('First Chunk After FFT:', {
+            max: Math.max(...fft),
+            min: Math.min(...fft),
+            rms: Math.sqrt(fft.reduce((acc, val) => acc + val * val, 0) / fft.length)
+          });
+        }
 
         // Apply effects only if settings are enabled
         for (let j = 0; j < fft.length / 2; j++) {
@@ -138,7 +173,25 @@ export class AudioProcessor {
           }
         }
 
+        // Debug: Log FFT stats after effects
+        if (i === 0) {
+          console.log('First Chunk After Effects:', {
+            max: Math.max(...fft),
+            min: Math.min(...fft),
+            rms: Math.sqrt(fft.reduce((acc, val) => acc + val * val, 0) / fft.length)
+          });
+        }
+
         this.inverseFFT(fft);
+
+        // Debug: Log chunk stats after inverse FFT
+        if (i === 0) {
+          console.log('First Chunk After Inverse FFT:', {
+            max: Math.max(...fft),
+            min: Math.min(...fft),
+            rms: Math.sqrt(fft.reduce((acc, val) => acc + val * val, 0) / fft.length)
+          });
+        }
 
         // Apply time domain effects and copy to output
         for (let j = 0; j < end - i; j++) {
@@ -150,6 +203,15 @@ export class AudioProcessor {
           
           outputData[i + j] = sample;
         }
+
+        // Debug: Log output chunk stats
+        if (i === 0) {
+          console.log('First Output Chunk:', {
+            max: Math.max(...outputData.slice(0, end - i)),
+            min: Math.min(...outputData.slice(0, end - i)),
+            rms: Math.sqrt(outputData.slice(0, end - i).reduce((acc, val) => acc + val * val, 0) / (end - i))
+          });
+        }
       }
     }
 
@@ -160,8 +222,17 @@ export class AudioProcessor {
     processedSource.start();
 
     const renderedBuffer = await offlineContext.startRendering();
+
+    // Debug: Log final output stats
+    const finalChannel = renderedBuffer.getChannelData(0);
+    console.log('Final Output Stats:', {
+      length: finalChannel.length,
+      max: Math.max(...finalChannel),
+      min: Math.min(...finalChannel),
+      rms: Math.sqrt(finalChannel.reduce((acc, val) => acc + val * val, 0) / finalChannel.length)
+    });
+
     const wavBlob = this.audioBufferToWav(renderedBuffer);
-    
     return wavBlob;
   }
 

@@ -44,7 +44,7 @@ export function VoiceSettings({ settings, onChange }: VoiceSettingsProps) {
   };
 
   return (
-    <Card className="p-4 space-y-4 bg-black/30 backdrop-blur-md border border-[#9b87f5]/30">
+    <Card className="p-4 space-y-4 bg-gray-800/80 backdrop-blur-md border border-[#9b87f5]/30">
       <h3 className="text-lg font-semibold mb-4">Voice Settings</h3>
       
       <div className="space-y-6">
