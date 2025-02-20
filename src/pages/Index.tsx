@@ -1,7 +1,7 @@
-
 import { useState, useRef, useEffect } from 'react';
 import { AudioProcessor } from '@/lib/audioProcessor';
 import { Glasses, Mic, Download, MicOff, Play, Square } from 'lucide-react';
+import { VoiceSettings, VoiceSettings as VoiceSettingsType, defaultVoiceSettings } from "@/components/VoiceSettings";
 
 const audioProcessor = new AudioProcessor();
 
@@ -10,6 +10,7 @@ const Index = () => {
   const [processedBlob, setProcessedBlob] = useState<Blob | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [voiceSettings, setVoiceSettings] = useState<VoiceSettingsType>(defaultVoiceSettings);
   const downloadLinkRef = useRef<HTMLAnchorElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
@@ -19,12 +20,11 @@ const Index = () => {
     if (isRecording) {
       setIsProcessing(true);
       const audioBlob = await audioProcessor.stopRecording();
-      const anonymizedBlob = await audioProcessor.anonymizeAudio(audioBlob);
+      const anonymizedBlob = await audioProcessor.anonymizeAudio(audioBlob, voiceSettings);
       setProcessedBlob(anonymizedBlob);
       setIsRecording(false);
       setIsProcessing(false);
       
-      // Create new audio element for playback
       audioElementRef.current = await audioProcessor.createAudioElement(anonymizedBlob);
     } else {
       await audioProcessor.startRecording();
@@ -145,6 +145,13 @@ const Index = () => {
               width={800}
               height={128}
               className="w-full h-full"
+            />
+          </div>
+
+          <div className="w-full max-w-md">
+            <VoiceSettings 
+              settings={voiceSettings}
+              onChange={setVoiceSettings}
             />
           </div>
 

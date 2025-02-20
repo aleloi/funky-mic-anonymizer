@@ -44,7 +44,7 @@ export class AudioProcessor {
     });
   }
 
-  async anonymizeAudio(audioBlob: Blob): Promise<Blob> {
+  async anonymizeAudio(audioBlob: Blob, settings: any): Promise<Blob> {
     const arrayBuffer = await audioBlob.arrayBuffer();
     const audioBuffer = await this.context.decodeAudioData(arrayBuffer);
     
@@ -80,34 +80,38 @@ export class AudioProcessor {
         const fft = new Float32Array(timeData);
         this.forwardFFT(fft);
 
-        // MUCH more aggressive frequency manipulation
         for (let i = 0; i < fft.length / 2; i++) {
           const real = fft[2 * i];
           const imag = fft[2 * i + 1];
           const magnitude = Math.sqrt(real * real + imag * imag);
           const phase = Math.atan2(imag, real);
 
-          // Multiple frequency shifts and inversions
-          const newPhase = -phase * 3 + Math.PI / 2;
+          // Phase inversion with configurable intensity
+          const newPhase = -phase * settings.phaseMultiplier + Math.PI / 2;
           
-          // Extreme frequency shifting
+          // Configurable frequency shifting
           const freqShift = (i / (fft.length / 2)) * 2 * Math.PI;
-          const shiftedPhase = newPhase + freqShift * 5;
+          const shiftedPhase = newPhase + freqShift * settings.frequencyShiftMultiplier;
           
-          // Non-linear magnitude scaling
+          // Configurable harmonic distortion and noise
           const newMagnitude = magnitude * (
-            1 + Math.sin(i * 0.2) + // Add harmonics
-            Math.cos(i * 0.3) + // More harmonics
-            Math.random() * 0.5 // Add noise
+            1 + Math.sin(i * settings.harmonicAmount) +
+            Math.cos(i * settings.harmonicAmount) +
+            (Math.random() * settings.noiseAmount)
           );
 
-          // Frequency scrambling
-          const targetBin = (i + Math.floor(i * 0.5)) % (fft.length / 2);
-          fft[2 * targetBin] = newMagnitude * Math.cos(shiftedPhase);
-          fft[2 * targetBin + 1] = newMagnitude * Math.sin(shiftedPhase);
+          // Optional frequency scrambling
+          if (settings.useFrequencyScrambling) {
+            const targetBin = (i + Math.floor(i * 0.5)) % (fft.length / 2);
+            fft[2 * targetBin] = newMagnitude * Math.cos(shiftedPhase);
+            fft[2 * targetBin + 1] = newMagnitude * Math.sin(shiftedPhase);
+          } else {
+            fft[2 * i] = newMagnitude * Math.cos(shiftedPhase);
+            fft[2 * i + 1] = newMagnitude * Math.sin(shiftedPhase);
+          }
 
-          // Additional phase distortion
-          if (i % 2 === 0) {
+          // Optional additional phase distortion
+          if (settings.useAdditionalPhaseDistortion && i % 2 === 0) {
             fft[2 * i] *= -1;
             fft[2 * i + 1] *= -1;
           }
@@ -115,11 +119,12 @@ export class AudioProcessor {
 
         this.inverseFFT(fft);
 
-        // Add some time-domain distortion as well
+        // Optional time-domain distortion
         for (let i = 0; i < outputData.length; i++) {
           const sample = fft[i] / analyser.fftSize;
-          // Waveshaping distortion
-          outputData[i] = Math.tanh(sample * 3) * 0.8;
+          outputData[i] = settings.useTimeDistortion
+            ? Math.tanh(sample * settings.timeDistortionAmount) * 0.8
+            : sample;
         }
       }
     };
