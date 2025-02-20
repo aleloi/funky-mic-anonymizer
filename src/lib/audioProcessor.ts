@@ -238,30 +238,36 @@ export class AudioProcessor {
 
   private forwardFFT(buffer: Float32Array) {
     const n = buffer.length;
-    if (n <= 1) return buffer;
-
-    const halfN = n / 2;
     
-    const even = new Float32Array(halfN);
-    const odd = new Float32Array(halfN);
-    for (let i = 0; i < halfN; i++) {
-      even[i] = buffer[2 * i];
-      odd[i] = buffer[2 * i + 1];
+    // Base case: arrays of length 1 are already transformed
+    if (n <= 1) return;
+
+    // Separate even and odd elements
+    const even = new Float32Array(n / 2);
+    const odd = new Float32Array(n / 2);
+    
+    for (let i = 0; i < n / 2; i++) {
+      even[i] = buffer[i * 2];
+      odd[i] = buffer[i * 2 + 1];
     }
 
+    // Recursive calls
     this.forwardFFT(even);
     this.forwardFFT(odd);
 
-    for (let k = 0; k < halfN; k++) {
-      const theta = -2 * Math.PI * k / n;
-      const re = Math.cos(theta);
-      const im = Math.sin(theta);
-      
-      const evenK = even[k];
-      const oddK = odd[k];
-      
-      buffer[k] = evenK + (re * oddK - im * oddK);
-      buffer[k + halfN] = evenK - (re * oddK - im * oddK);
+    // Combine results
+    for (let k = 0; k < n / 2; k++) {
+      const kth = -2 * Math.PI * k / n;
+      const wk = {
+        re: Math.cos(kth),
+        im: Math.sin(kth)
+      };
+
+      const p = even[k];
+      const q = wk.re * odd[k] - wk.im * odd[k];
+
+      buffer[k] = p + q;
+      buffer[k + n/2] = p - q;
     }
   }
 
