@@ -1,3 +1,4 @@
+
 export class AudioProcessor {
   private context: AudioContext;
   private analyser: AnalyserNode;
@@ -57,78 +58,105 @@ export class AudioProcessor {
     const source = offlineContext.createBufferSource();
     source.buffer = audioBuffer;
 
+    // Create gain node to control output volume
+    const gainNode = offlineContext.createGain();
+    gainNode.gain.value = 1.0;
+
     const analyser = offlineContext.createAnalyser();
     analyser.fftSize = 2048;
     
-    const scriptNode = offlineContext.createScriptProcessor(2048, 1, 1);
-    
+    // Change the signal flow to include gain node
     source.connect(analyser);
-    analyser.connect(scriptNode);
-    scriptNode.connect(offlineContext.destination);
+    analyser.connect(gainNode);
+    gainNode.connect(offlineContext.destination);
 
-    const timeData = new Float32Array(analyser.fftSize);
+    // Get the original audio data
+    const originalData = audioBuffer.getChannelData(0);
     
-    scriptNode.onaudioprocess = (audioProcessingEvent) => {
-      const inputBuffer = audioProcessingEvent.inputBuffer;
-      const outputBuffer = audioProcessingEvent.outputBuffer;
+    // Create output buffer
+    const outputBuffer = offlineContext.createBuffer(
+      audioBuffer.numberOfChannels,
+      audioBuffer.length,
+      audioBuffer.sampleRate
+    );
 
-      for (let channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
-        const outputData = outputBuffer.getChannelData(channel);
+    // Process each channel
+    for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
+      const outputData = outputBuffer.getChannelData(channel);
+      const inputData = audioBuffer.getChannelData(channel);
+      
+      // Process in chunks to avoid large FFT computations
+      const chunkSize = 2048;
+      for (let i = 0; i < inputData.length; i += chunkSize) {
+        const chunk = new Float32Array(chunkSize);
+        const end = Math.min(i + chunkSize, inputData.length);
+        chunk.set(inputData.slice(i, end));
 
-        analyser.getFloatTimeDomainData(timeData);
-        
-        const fft = new Float32Array(timeData);
+        const fft = new Float32Array(chunk);
         this.forwardFFT(fft);
 
-        for (let i = 0; i < fft.length / 2; i++) {
-          const real = fft[2 * i];
-          const imag = fft[2 * i + 1];
-          const magnitude = Math.sqrt(real * real + imag * imag);
-          const phase = Math.atan2(imag, real);
+        // Apply effects only if settings are enabled
+        for (let j = 0; j < fft.length / 2; j++) {
+          const real = fft[2 * j];
+          const imag = fft[2 * j + 1];
+          let magnitude = Math.sqrt(real * real + imag * imag);
+          let phase = Math.atan2(imag, real);
 
-          // Phase inversion with configurable intensity
-          const newPhase = -phase * settings.phaseMultiplier + Math.PI / 2;
-          
-          // Configurable frequency shifting
-          const freqShift = (i / (fft.length / 2)) * 2 * Math.PI;
-          const shiftedPhase = newPhase + freqShift * settings.frequencyShiftMultiplier;
-          
-          // Configurable harmonic distortion and noise
-          const newMagnitude = magnitude * (
-            1 + Math.sin(i * settings.harmonicAmount) +
-            Math.cos(i * settings.harmonicAmount) +
-            (Math.random() * settings.noiseAmount)
-          );
+          if (settings.useFrequencyScrambling || 
+              settings.useAdditionalPhaseDistortion || 
+              settings.useTimeDistortion) {
+            
+            // Phase inversion with configurable intensity
+            phase = -phase * settings.phaseMultiplier + Math.PI / 2;
+            
+            // Frequency shifting
+            const freqShift = (j / (fft.length / 2)) * 2 * Math.PI;
+            phase += freqShift * settings.frequencyShiftMultiplier;
+            
+            // Harmonic distortion and noise
+            magnitude *= (
+              1 + Math.sin(j * settings.harmonicAmount) +
+              Math.cos(j * settings.harmonicAmount) +
+              (Math.random() * settings.noiseAmount)
+            );
 
-          // Optional frequency scrambling
-          if (settings.useFrequencyScrambling) {
-            const targetBin = (i + Math.floor(i * 0.5)) % (fft.length / 2);
-            fft[2 * targetBin] = newMagnitude * Math.cos(shiftedPhase);
-            fft[2 * targetBin + 1] = newMagnitude * Math.sin(shiftedPhase);
+            if (settings.useFrequencyScrambling) {
+              const targetBin = (j + Math.floor(j * 0.5)) % (fft.length / 2);
+              fft[2 * targetBin] = magnitude * Math.cos(phase);
+              fft[2 * targetBin + 1] = magnitude * Math.sin(phase);
+            } else {
+              fft[2 * j] = magnitude * Math.cos(phase);
+              fft[2 * j + 1] = magnitude * Math.sin(phase);
+            }
+
+            if (settings.useAdditionalPhaseDistortion && j % 2 === 0) {
+              fft[2 * j] *= -1;
+              fft[2 * j + 1] *= -1;
+            }
           } else {
-            fft[2 * i] = newMagnitude * Math.cos(shiftedPhase);
-            fft[2 * i + 1] = newMagnitude * Math.sin(shiftedPhase);
-          }
-
-          // Optional additional phase distortion
-          if (settings.useAdditionalPhaseDistortion && i % 2 === 0) {
-            fft[2 * i] *= -1;
-            fft[2 * i + 1] *= -1;
+            // If no effects are enabled, preserve original signal
+            fft[2 * j] = real;
+            fft[2 * j + 1] = imag;
           }
         }
 
         this.inverseFFT(fft);
 
-        // Optional time-domain distortion
-        for (let i = 0; i < outputData.length; i++) {
-          const sample = fft[i] / analyser.fftSize;
-          outputData[i] = settings.useTimeDistortion
-            ? Math.tanh(sample * settings.timeDistortionAmount) * 0.8
-            : sample;
+        // Apply time domain effects and copy to output
+        for (let j = 0; j < end - i; j++) {
+          let sample = fft[j] / fft.length; // Normalize after inverse FFT
+          
+          if (settings.useTimeDistortion) {
+            sample = Math.tanh(sample * settings.timeDistortionAmount);
+          }
+          
+          outputData[i + j] = sample;
         }
       }
-    };
+    }
 
+    // Set the processed buffer as the source buffer
+    source.buffer = outputBuffer;
     source.start();
 
     const renderedBuffer = await offlineContext.startRendering();
@@ -137,14 +165,12 @@ export class AudioProcessor {
     return wavBlob;
   }
 
-  // Fast Fourier Transform implementation
   private forwardFFT(buffer: Float32Array) {
     const n = buffer.length;
     if (n <= 1) return buffer;
 
     const halfN = n / 2;
     
-    // Separate even and odd elements
     const even = new Float32Array(halfN);
     const odd = new Float32Array(halfN);
     for (let i = 0; i < halfN; i++) {
@@ -152,11 +178,9 @@ export class AudioProcessor {
       odd[i] = buffer[2 * i + 1];
     }
 
-    // Recursively compute FFT
     this.forwardFFT(even);
     this.forwardFFT(odd);
 
-    // Combine results
     for (let k = 0; k < halfN; k++) {
       const theta = -2 * Math.PI * k / n;
       const re = Math.cos(theta);
@@ -179,14 +203,11 @@ export class AudioProcessor {
     // Forward FFT
     this.forwardFFT(buffer);
 
-    // Conjugate the complex numbers again
+    // Conjugate the complex numbers again and scale
     for (let i = 0; i < buffer.length; i += 2) {
       buffer[i + 1] = -buffer[i + 1];
-    }
-
-    // Scale the numbers
-    for (let i = 0; i < buffer.length; i++) {
       buffer[i] /= buffer.length;
+      buffer[i + 1] /= buffer.length;
     }
   }
 
