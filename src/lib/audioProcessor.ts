@@ -239,36 +239,53 @@ export class AudioProcessor {
   private forwardFFT(buffer: Float32Array) {
     const n = buffer.length;
     
-    // Base case: arrays of length 1 are already transformed
-    if (n <= 1) return;
-
-    // Separate even and odd elements
-    const even = new Float32Array(n / 2);
-    const odd = new Float32Array(n / 2);
+    // Bit reversal
+    for (let i = 0; i < n; i++) {
+      const j = this.reverseBits(i, Math.log2(n));
+      if (j > i) {
+        const temp = buffer[i];
+        buffer[i] = buffer[j];
+        buffer[j] = temp;
+      }
+    }
     
-    for (let i = 0; i < n / 2; i++) {
-      even[i] = buffer[i * 2];
-      odd[i] = buffer[i * 2 + 1];
+    // Cooley-Tukey iterative FFT
+    for (let size = 2; size <= n; size *= 2) {
+      const halfSize = size / 2;
+      const angle = -2 * Math.PI / size;
+      
+      for (let i = 0; i < n; i += size) {
+        for (let j = 0; j < halfSize; j++) {
+          const re = Math.cos(angle * j);
+          const im = Math.sin(angle * j);
+          
+          const evenIndex = i + j;
+          const oddIndex = i + j + halfSize;
+          
+          const evenReal = buffer[evenIndex * 2];
+          const evenImag = buffer[evenIndex * 2 + 1];
+          const oddReal = buffer[oddIndex * 2];
+          const oddImag = buffer[oddIndex * 2 + 1];
+          
+          const temp1Real = oddReal * re - oddImag * im;
+          const temp1Imag = oddReal * im + oddImag * re;
+          
+          buffer[evenIndex * 2] = evenReal + temp1Real;
+          buffer[evenIndex * 2 + 1] = evenImag + temp1Imag;
+          buffer[oddIndex * 2] = evenReal - temp1Real;
+          buffer[oddIndex * 2 + 1] = evenImag - temp1Imag;
+        }
+      }
     }
+  }
 
-    // Recursive calls
-    this.forwardFFT(even);
-    this.forwardFFT(odd);
-
-    // Combine results
-    for (let k = 0; k < n / 2; k++) {
-      const kth = -2 * Math.PI * k / n;
-      const wk = {
-        re: Math.cos(kth),
-        im: Math.sin(kth)
-      };
-
-      const p = even[k];
-      const q = wk.re * odd[k] - wk.im * odd[k];
-
-      buffer[k] = p + q;
-      buffer[k + n/2] = p - q;
+  private reverseBits(x: number, bits: number): number {
+    let result = 0;
+    for (let i = 0; i < bits; i++) {
+      result = (result << 1) | (x & 1);
+      x >>= 1;
     }
+    return result;
   }
 
   private inverseFFT(buffer: Float32Array) {
