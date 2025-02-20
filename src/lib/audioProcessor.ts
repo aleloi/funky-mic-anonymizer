@@ -55,6 +55,7 @@ export class AudioProcessor {
       audioBuffer.sampleRate
     );
 
+    // First source node for input buffer
     const source = offlineContext.createBufferSource();
     source.buffer = audioBuffer;
 
@@ -70,9 +71,6 @@ export class AudioProcessor {
     analyser.connect(gainNode);
     gainNode.connect(offlineContext.destination);
 
-    // Get the original audio data
-    const originalData = audioBuffer.getChannelData(0);
-    
     // Create output buffer
     const outputBuffer = offlineContext.createBuffer(
       audioBuffer.numberOfChannels,
@@ -155,9 +153,11 @@ export class AudioProcessor {
       }
     }
 
-    // Set the processed buffer as the source buffer
-    source.buffer = outputBuffer;
-    source.start();
+    // Create a new source node for the processed buffer
+    const processedSource = offlineContext.createBufferSource();
+    processedSource.buffer = outputBuffer;
+    processedSource.connect(offlineContext.destination);
+    processedSource.start();
 
     const renderedBuffer = await offlineContext.startRendering();
     const wavBlob = this.audioBufferToWav(renderedBuffer);
