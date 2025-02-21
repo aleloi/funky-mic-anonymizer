@@ -47,8 +47,8 @@ export class AudioProcessor {
     settings.harmonicAmount = settings.harmonicAmount ?? 0.0;
     settings.noiseAmount = settings.noiseAmount ?? 0.0;
     settings.timeDistortionAmount = settings.timeDistortionAmount ?? 1.0;
-    // frequencyScrambleRange: fraction of FFT size (default: 5%).
-    settings.frequencyScrambleRange = settings.frequencyScrambleRange ?? 0.05;
+    // frequencyScrambleRange: fraction of FFT size (default: 1%).
+    settings.frequencyScrambleRange = settings.frequencyScrambleRange ?? 0.01;
   
     const arrayBuffer = await audioBlob.arrayBuffer();
     const audioBuffer = await this.context.decodeAudioData(arrayBuffer);
