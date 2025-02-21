@@ -16,6 +16,88 @@ const Index = () => {
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const animationFrameRef = useRef<number>();
 
+  // Add new state for audio analysis
+  const [audioData, setAudioData] = useState<number[]>(new Array(50).fill(0));
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationFrameRef = useRef<number>();
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const width = canvas.width;
+    const height = canvas.height;
+
+    const analyseAudio = () => {
+      if (!analyserRef.current) return new Array(50).fill(0);
+      const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+      analyserRef.current.getByteFrequencyData(dataArray);
+      
+      // Get average levels for different frequency ranges
+      const bands = 50;
+      const levelData = new Array(bands).fill(0);
+      const samplesPerBand = Math.floor(dataArray.length / bands);
+      
+      for (let i = 0; i < bands; i++) {
+        let sum = 0;
+        for (let j = 0; j < samplesPerBand; j++) {
+          sum += dataArray[i * samplesPerBand + j];
+        }
+        levelData[i] = sum / samplesPerBand / 255.0;
+      }
+      
+      return levelData;
+    };
+
+    const drawWaveform = (timestamp: number) => {
+      ctx.fillStyle = '#1A1F2C';
+      ctx.fillRect(0, 0, width, height);
+
+      const levels = isRecording || isPlaying ? analyseAudio() : new Array(50).fill(0);
+      setAudioData(levels);
+
+      // Draw frequency-based waveform
+      ctx.beginPath();
+      ctx.strokeStyle = '#9b87f5';
+      ctx.lineWidth = 2;
+
+      const spacing = width / levels.length;
+
+      for (let i = 0; i < levels.length; i++) {
+        const x = i * spacing;
+        // Combine frequency data with a sine wave for visual interest
+        const freqAmplitude = levels[i] * 40;
+        const sineAmplitude = Math.sin(timestamp / 1000 + i * 0.2) * 10;
+        const y = height / 2 + (freqAmplitude + sineAmplitude) * (isRecording || isPlaying ? 1 : 0.2);
+
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+
+      ctx.stroke();
+
+      // Add glow effect
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = '#9b87f5';
+      ctx.stroke();
+
+      animationFrameRef.current = requestAnimationFrame(drawWaveform);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(drawWaveform);
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [isRecording, isPlaying]);
+
   const handleRecord = async () => {
     if (isRecording) {
       setIsProcessing(true);
@@ -26,8 +108,10 @@ const Index = () => {
       setIsProcessing(false);
       
       audioElementRef.current = await audioProcessor.createAudioElement(anonymizedBlob);
+      analyserRef.current = null;
     } else {
       await audioProcessor.startRecording();
+      analyserRef.current = audioProcessor.getAnalyser();
       setIsRecording(true);
       setProcessedBlob(null);
     }
@@ -55,61 +139,6 @@ const Index = () => {
       URL.revokeObjectURL(url);
     }
   };
-
-  // Animated waveform visualization
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const width = canvas.width;
-    const height = canvas.height;
-
-    const drawWaveform = (timestamp: number) => {
-      ctx.fillStyle = '#1A1F2C';
-      ctx.fillRect(0, 0, width, height);
-
-      // Number of lines in the waveform
-      const lines = 50;
-      const spacing = width / lines;
-
-      ctx.beginPath();
-      ctx.strokeStyle = '#9b87f5';
-      ctx.lineWidth = 2;
-
-      for (let i = 0; i < lines; i++) {
-        const x = i * spacing;
-        // Create a dynamic amplitude based on time and position
-        const amplitude = Math.sin(timestamp / 1000 + i * 0.2) * 30;
-        const y = height / 2 + amplitude * (isRecording || isPlaying ? 1 : 0.2);
-
-        if (i === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-      }
-
-      ctx.stroke();
-
-      // Add glow effect
-      ctx.shadowBlur = 15;
-      ctx.shadowColor = '#9b87f5';
-      ctx.stroke();
-
-      animationFrameRef.current = requestAnimationFrame(drawWaveform);
-    };
-
-    animationFrameRef.current = requestAnimationFrame(drawWaveform);
-
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [isRecording, isPlaying]);
 
   useEffect(() => {
     if (audioElementRef.current) {
