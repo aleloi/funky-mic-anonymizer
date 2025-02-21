@@ -2,6 +2,8 @@
 
 ## Project info
 
+Published at https://funky-mic-anonymizer.lovable.app/
+
 **URL**: https://lovable.dev/projects/017fae2d-615a-4e68-b59b-93704f55dc3e
 
 ## How can I edit this code?
