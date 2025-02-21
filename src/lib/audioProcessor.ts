@@ -49,44 +49,44 @@ export class AudioProcessor {
     settings.timeDistortionAmount = settings.timeDistortionAmount ?? 1.0;
     // frequencyScrambleRange: fraction of FFT size (default: 5%).
     settings.frequencyScrambleRange = settings.frequencyScrambleRange ?? 0.05;
-    
+  
     const arrayBuffer = await audioBlob.arrayBuffer();
     const audioBuffer = await this.context.decodeAudioData(arrayBuffer);
-
+  
     // Debug: Log original audio stats for channel 0.
     const originalChannel = audioBuffer.getChannelData(0);
     console.log('Original Audio Stats:', {
       length: originalChannel.length,
       max: Math.max(...originalChannel),
       min: Math.min(...originalChannel),
-      rms: Math.sqrt(originalChannel.reduce((acc, val) => acc + val * val, 0) / originalChannel.length)
+      rms: Math.sqrt(originalChannel.reduce((acc, val) => acc + val * val, 0) / originalChannel.length),
     });
-
+  
     const offlineContext = new OfflineAudioContext(
       audioBuffer.numberOfChannels,
       audioBuffer.length,
       audioBuffer.sampleRate
     );
-
+  
     // Create output buffer for processed audio.
     const outputBuffer = offlineContext.createBuffer(
       audioBuffer.numberOfChannels,
       audioBuffer.length,
       audioBuffer.sampleRate
     );
-
+  
     // Process each channel iteratively.
     for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
       const inputData = audioBuffer.getChannelData(channel);
       const outputData = outputBuffer.getChannelData(channel);
-
+  
       console.log(`Channel ${channel} Stats:`, {
         length: inputData.length,
         max: Math.max(...inputData),
         min: Math.min(...inputData),
-        rms: Math.sqrt(inputData.reduce((acc, val) => acc + val * val, 0) / inputData.length)
+        rms: Math.sqrt(inputData.reduce((acc, val) => acc + val * val, 0) / inputData.length),
       });
-
+  
       const chunkSize = 2048;
       // Process the audio in sequential chunks.
       for (let i = 0; i < inputData.length; i += chunkSize) {
@@ -103,7 +103,7 @@ export class AudioProcessor {
           fft[2 * k] = 0;
           fft[2 * k + 1] = 0;
         }
-
+  
         // Debug: Log first chunk (real part) stats before FFT.
         if (i === 0) {
           const realPart: number[] = [];
@@ -113,12 +113,12 @@ export class AudioProcessor {
           console.log('First Chunk Before FFT:', {
             max: Math.max(...realPart),
             min: Math.min(...realPart),
-            rms: Math.sqrt(realPart.reduce((acc, val) => acc + val * val, 0) / realPart.length)
+            rms: Math.sqrt(realPart.reduce((acc, val) => acc + val * val, 0) / realPart.length),
           });
         }
-
+  
         this.forwardFFT(fft);
-
+  
         // Debug: Log FFT magnitudes after FFT.
         if (i === 0) {
           const magnitudes: number[] = [];
@@ -130,48 +130,50 @@ export class AudioProcessor {
           console.log('First Chunk After FFT:', {
             max: Math.max(...magnitudes),
             min: Math.min(...magnitudes),
-            rms: Math.sqrt(magnitudes.reduce((acc, val) => acc + val * val, 0) / magnitudes.length)
+            rms: Math.sqrt(magnitudes.reduce((acc, val) => acc + val * val, 0) / magnitudes.length),
           });
         }
-
+  
         // Apply frequency-domain effects.
         for (let j = 0; j < chunkSize; j++) {
           const real = fft[2 * j];
           const imag = fft[2 * j + 1];
           let magnitude = Math.sqrt(real * real + imag * imag);
           let phase = Math.atan2(imag, real);
-
+  
           // Common modifications:
           phase = -phase * settings.phaseMultiplier + Math.PI / 2;
           const freqShift = (j / chunkSize) * 2 * Math.PI;
           phase += freqShift * settings.frequencyShiftMultiplier;
-          magnitude *= (
+          magnitude *=
             1 +
             Math.sin(j * settings.harmonicAmount) +
             Math.cos(j * settings.harmonicAmount) +
-            (Math.random() * settings.noiseAmount)
-          );
-
-          // If frequency scrambling is enabled, apply a small random offset.
+            (Math.random() * settings.noiseAmount);
+  
+          // === DETERMINISTIC FREQUENCY SCRAMBLING FIX ===
           if (settings.useFrequencyScrambling) {
             const maxOffset = Math.floor(chunkSize * settings.frequencyScrambleRange);
-            // Random offset between -maxOffset and +maxOffset.
-            const offset = Math.floor((Math.random() * 2 - 1) * maxOffset);
+  
+            // Generate a deterministic offset in [-maxOffset, +maxOffset].
+            // Here, (j * 8273) is just a simple way to change the offset per bin.
+            const offset = ((j * 8273) % (2 * maxOffset + 1)) - maxOffset;
             const targetBin = (j + offset + chunkSize) % chunkSize;
+  
             fft[2 * targetBin] = magnitude * Math.cos(phase);
             fft[2 * targetBin + 1] = magnitude * Math.sin(phase);
           } else {
             fft[2 * j] = magnitude * Math.cos(phase);
             fft[2 * j + 1] = magnitude * Math.sin(phase);
           }
-
+  
           // Optional additional phase distortion.
           if (settings.useAdditionalPhaseDistortion && j % 2 === 0) {
             fft[2 * j] *= -1;
             fft[2 * j + 1] *= -1;
           }
         }
-
+  
         // Debug: Log FFT stats after effects.
         if (i === 0) {
           const magnitudes: number[] = [];
@@ -183,12 +185,12 @@ export class AudioProcessor {
           console.log('First Chunk After Effects:', {
             max: Math.max(...magnitudes),
             min: Math.min(...magnitudes),
-            rms: Math.sqrt(magnitudes.reduce((acc, val) => acc + val * val, 0) / magnitudes.length)
+            rms: Math.sqrt(magnitudes.reduce((acc, val) => acc + val * val, 0) / magnitudes.length),
           });
         }
-
+  
         this.inverseFFT(fft);
-
+  
         // Debug: Log first chunk stats after inverse FFT.
         if (i === 0) {
           const recovered: number[] = [];
@@ -198,10 +200,10 @@ export class AudioProcessor {
           console.log('First Chunk After Inverse FFT:', {
             max: Math.max(...recovered),
             min: Math.min(...recovered),
-            rms: Math.sqrt(recovered.reduce((acc, val) => acc + val * val, 0) / recovered.length)
+            rms: Math.sqrt(recovered.reduce((acc, val) => acc + val * val, 0) / recovered.length),
           });
         }
-
+  
         // Copy the recovered time-domain samples into output.
         for (let j = 0; j < currentChunkSize; j++) {
           let sample = fft[2 * j];
@@ -211,37 +213,41 @@ export class AudioProcessor {
           }
           outputData[i + j] = sample;
         }
-
+  
         // Debug: Log output chunk stats.
         if (i === 0) {
           const outputChunk = outputData.slice(0, currentChunkSize);
           console.log('First Output Chunk:', {
             max: Math.max(...outputChunk),
             min: Math.min(...outputChunk),
-            rms: Math.sqrt(outputChunk.reduce((acc, val) => acc + val * val, 0) / outputChunk.length)
+            rms: Math.sqrt(outputChunk.reduce((acc, val) => acc + val * val, 0) / outputChunk.length),
           });
         }
       }
     }
-
+  
     // Create a source node for the processed buffer and render it.
     const processedSource = offlineContext.createBufferSource();
     processedSource.buffer = outputBuffer;
     processedSource.connect(offlineContext.destination);
     processedSource.start();
-
+  
     const renderedBuffer = await offlineContext.startRendering();
-
+  
     console.log('Final Output Stats:', {
       length: renderedBuffer.getChannelData(0).length,
       max: Math.max(...renderedBuffer.getChannelData(0)),
       min: Math.min(...renderedBuffer.getChannelData(0)),
-      rms: Math.sqrt(renderedBuffer.getChannelData(0).reduce((acc, val) => acc + val * val, 0) / renderedBuffer.getChannelData(0).length)
+      rms: Math.sqrt(
+        renderedBuffer
+          .getChannelData(0)
+          .reduce((acc, val) => acc + val * val, 0) / renderedBuffer.getChannelData(0).length
+      ),
     });
-
+  
     const wavBlob = this.audioBufferToWav(renderedBuffer);
     return wavBlob;
-  }
+}
 
   private forwardFFT(buffer: Float32Array) {
     const N = buffer.length / 2; // Number of complex samples.
