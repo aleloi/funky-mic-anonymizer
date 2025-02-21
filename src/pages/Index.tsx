@@ -15,11 +15,8 @@ const Index = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const animationFrameRef = useRef<number>();
-
-  // Add new state for audio analysis
-  const [audioData, setAudioData] = useState<number[]>(new Array(50).fill(0));
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const animationFrameRef = useRef<number>();
+  const [audioData, setAudioData] = useState<number[]>(new Array(50).fill(0));
 
   useEffect(() => {
     if (!canvasRef.current) return;
