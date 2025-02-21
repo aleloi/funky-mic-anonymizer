@@ -55,13 +55,7 @@ export class AudioProcessor {
   
     // Debug: Log original audio stats for channel 0.
     const originalChannel = audioBuffer.getChannelData(0);
-    console.log('Original Audio Stats:', {
-      length: originalChannel.length,
-      max: Math.max(...originalChannel),
-      min: Math.min(...originalChannel),
-      rms: Math.sqrt(originalChannel.reduce((acc, val) => acc + val * val, 0) / originalChannel.length),
-    });
-  
+
     const offlineContext = new OfflineAudioContext(
       audioBuffer.numberOfChannels,
       audioBuffer.length,
@@ -80,12 +74,6 @@ export class AudioProcessor {
       const inputData = audioBuffer.getChannelData(channel);
       const outputData = outputBuffer.getChannelData(channel);
   
-      console.log(`Channel ${channel} Stats:`, {
-        length: inputData.length,
-        max: Math.max(...inputData),
-        min: Math.min(...inputData),
-        rms: Math.sqrt(inputData.reduce((acc, val) => acc + val * val, 0) / inputData.length),
-      });
   
       const chunkSize = 2048;
       // Process the audio in sequential chunks.
@@ -110,11 +98,7 @@ export class AudioProcessor {
           for (let k = 0; k < chunkSize; k++) {
             realPart.push(fft[2 * k]);
           }
-          console.log('First Chunk Before FFT:', {
-            max: Math.max(...realPart),
-            min: Math.min(...realPart),
-            rms: Math.sqrt(realPart.reduce((acc, val) => acc + val * val, 0) / realPart.length),
-          });
+
         }
   
         this.forwardFFT(fft);
@@ -127,11 +111,7 @@ export class AudioProcessor {
             const imag = fft[2 * j + 1];
             magnitudes.push(Math.sqrt(real * real + imag * imag));
           }
-          console.log('First Chunk After FFT:', {
-            max: Math.max(...magnitudes),
-            min: Math.min(...magnitudes),
-            rms: Math.sqrt(magnitudes.reduce((acc, val) => acc + val * val, 0) / magnitudes.length),
-          });
+
         }
   
         // Apply frequency-domain effects.
@@ -182,11 +162,6 @@ export class AudioProcessor {
             const imag = fft[2 * j + 1];
             magnitudes.push(Math.sqrt(real * real + imag * imag));
           }
-          console.log('First Chunk After Effects:', {
-            max: Math.max(...magnitudes),
-            min: Math.min(...magnitudes),
-            rms: Math.sqrt(magnitudes.reduce((acc, val) => acc + val * val, 0) / magnitudes.length),
-          });
         }
   
         this.inverseFFT(fft);
@@ -197,11 +172,7 @@ export class AudioProcessor {
           for (let j = 0; j < chunkSize; j++) {
             recovered.push(fft[2 * j]);
           }
-          console.log('First Chunk After Inverse FFT:', {
-            max: Math.max(...recovered),
-            min: Math.min(...recovered),
-            rms: Math.sqrt(recovered.reduce((acc, val) => acc + val * val, 0) / recovered.length),
-          });
+    
         }
   
         // Copy the recovered time-domain samples into output.
@@ -217,11 +188,7 @@ export class AudioProcessor {
         // Debug: Log output chunk stats.
         if (i === 0) {
           const outputChunk = outputData.slice(0, currentChunkSize);
-          console.log('First Output Chunk:', {
-            max: Math.max(...outputChunk),
-            min: Math.min(...outputChunk),
-            rms: Math.sqrt(outputChunk.reduce((acc, val) => acc + val * val, 0) / outputChunk.length),
-          });
+  
         }
       }
     }
@@ -234,16 +201,7 @@ export class AudioProcessor {
   
     const renderedBuffer = await offlineContext.startRendering();
   
-    console.log('Final Output Stats:', {
-      length: renderedBuffer.getChannelData(0).length,
-      max: Math.max(...renderedBuffer.getChannelData(0)),
-      min: Math.min(...renderedBuffer.getChannelData(0)),
-      rms: Math.sqrt(
-        renderedBuffer
-          .getChannelData(0)
-          .reduce((acc, val) => acc + val * val, 0) / renderedBuffer.getChannelData(0).length
-      ),
-    });
+
   
     const wavBlob = this.audioBufferToWav(renderedBuffer);
     return wavBlob;
